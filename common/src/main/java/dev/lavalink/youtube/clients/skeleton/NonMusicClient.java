@@ -80,14 +80,15 @@ public abstract class NonMusicClient implements Client {
     protected JsonBrowser loadTrackInfoFromInnertube(@NotNull YoutubeAudioSourceManager source,
                                                      @NotNull HttpInterface httpInterface,
                                                      @NotNull String videoId,
-                                                     @Nullable PlayabilityStatus status) throws CannotBeLoaded, IOException {
+                                                     @Nullable PlayabilityStatus status) throws CannotBeLoaded, IOException, RuntimeException {
         SignatureCipherManager cipherManager = source.getCipherManager();
         CachedPlayerScript playerScript = cipherManager.getCachedPlayerScript(httpInterface);
         SignatureCipher signatureCipher = cipherManager.getCipherScript(httpInterface, playerScript.url);
 
         ClientConfig config = getBaseClientConfig(httpInterface);
 
-        if (status == null || this.isEmbedded()) {    
+        if (status == null) {
+            // Only add embed info if the status is not NON_EMBEDDABLE.
             config.withClientField("clientScreen", "EMBED")
                 .withThirdPartyEmbedUrl("https://google.com");
         }
