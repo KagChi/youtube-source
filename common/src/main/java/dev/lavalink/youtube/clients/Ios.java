@@ -6,13 +6,17 @@ import dev.lavalink.youtube.clients.skeleton.StreamingNonMusicClient;
 import org.jetbrains.annotations.NotNull;
 
 public class Ios extends StreamingNonMusicClient {
-    public static String CLIENT_VERSION = "19.07.5";
+    public static String CLIENT_VERSION = "19.32.8";
 
     public static ClientConfig BASE_CONFIG = new ClientConfig()
         .withApiKey("AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc")
-        .withUserAgent(String.format("com.google.ios.youtube/%s (iPhone14,5; U; CPU iOS 15_6 like Mac OS X)", CLIENT_VERSION))
+        .withUserAgent(String.format("com.google.ios.youtube/%s (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)", CLIENT_VERSION))
         .withClientName("IOS")
         .withClientField("clientVersion", CLIENT_VERSION)
+        .withClientField("osVersion", "17.6.1.21G93")
+        .withClientField("osName", "iPhone")
+        .withClientField("deviceModel", "iPhone14,5")
+        .withClientField("deviceMake", "Apple")
         .withUserField("lockedSafetyMode", false);
 
     protected ClientOptions options;
