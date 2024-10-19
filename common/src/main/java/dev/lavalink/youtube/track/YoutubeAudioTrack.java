@@ -1,5 +1,6 @@
 package dev.lavalink.youtube.track;
 
+import com.sedmelluq.discord.lavaplayer.container.adts.AdtsAudioTrack;
 import com.sedmelluq.discord.lavaplayer.container.matroska.MatroskaAudioTrack;
 import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
@@ -98,7 +99,10 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
 
             // Find the best format based on encoding and channels
             JsonBrowser bestFormat = formats.stream()
-                    .filter(format -> "opus".equals(format.get("encoding").text()))
+                    .filter(format -> {
+                      String encoding = format.get("encoding").text();
+                      return "opus".equals(encoding) || "aac".equals(encoding);
+                    })
                     .filter(format -> format.get("audioChannels").asLong(0) <= 2)
                     .max((format1, format2) -> {
                       long bitrate1 = format1.get("bitrate").asLong(0);
@@ -117,10 +121,19 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
                     .orElseThrow(() -> new FriendlyException("No suitable formats found.", FriendlyException.Severity.SUSPICIOUS, null));
 
             URI formatUrl = new URI(bestFormat.get("url").text());
+            String encoding = bestFormat.get("encoding").text();
 
             if (inviClient.getProxies().isEmpty()) {
-              YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
-              processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+              if ("opus".equals(encoding)) {
+                YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
+                processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+              } else if ("aac".equals(encoding)) {
+                YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
+                processDelegate(new AdtsAudioTrack(trackInfo, stream), localExecutor);
+              } else {
+                  throw new FriendlyException("No suitable formats found.", Severity.SUSPICIOUS, null);
+              }
+
               return; // Exit once successful
             }
 
@@ -140,9 +153,16 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
 
                 log.debug("Trying format URL: " + updatedUri);
 
-                // Attempt to create the stream
-                YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
-                processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+                if ("opus".equals(encoding)) {
+                  YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
+                  processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+                } else if ("aac".equals(encoding)) {
+                  YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
+                  processDelegate(new AdtsAudioTrack(trackInfo, stream), localExecutor);
+                } else {
+                  throw new FriendlyException("No suitable formats found.", Severity.SUSPICIOUS, null);
+                }
+
                 return; // Exit once successful
               } catch (RuntimeException e) {
                 String message = e.getMessage();
