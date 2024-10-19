@@ -12,6 +12,7 @@ import dev.lavalink.youtube.clients.ClientOptions;
 import dev.lavalink.youtube.clients.Web;
 import dev.lavalink.youtube.clients.WebEmbedded;
 import dev.lavalink.youtube.clients.skeleton.Client;
+import dev.lavalink.youtube.invi.InviClient;
 import lavalink.server.config.RateLimitConfig;
 import lavalink.server.config.ServerConfig;
 import org.slf4j.Logger;
@@ -179,7 +180,15 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
                 }
             }
 
-            source = new YoutubeAudioSourceManager(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, clientProvider.getClients(clients, this::getOptionsForClient));
+            List<InviClient> inviClients;
+
+            if (youtubeConfig == null || youtubeConfig.getInviClients() == null) {
+                inviClients = Collections.emptyList();
+            } else {
+                inviClients = youtubeConfig.getInviClients();
+            }
+
+            source = new YoutubeAudioSourceManager(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, inviClients, clientProvider.getClients(clients, this::getOptionsForClient));
         }
 
         log.info("YouTube source initialised with clients: {} ", Arrays.stream(source.getClients()).map(Client::getIdentifier).collect(Collectors.joining(", ")));

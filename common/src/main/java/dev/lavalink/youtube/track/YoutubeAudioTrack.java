@@ -6,7 +6,10 @@ import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity;
+import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
+import com.sedmelluq.discord.lavaplayer.tools.io.PersistentHttpStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.DelegatedAudioTrack;
@@ -17,20 +20,30 @@ import dev.lavalink.youtube.UrlTools;
 import dev.lavalink.youtube.UrlTools.UrlInfo;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.clients.skeleton.Client;
+import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.format.StreamFormat;
 import dev.lavalink.youtube.track.format.TrackFormats;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.util.EntityUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import static com.sedmelluq.discord.lavaplayer.container.Formats.MIME_AUDIO_WEBM;
 import static com.sedmelluq.discord.lavaplayer.tools.DataFormatTools.decodeUrlEncodedItems;
+import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.SUSPICIOUS;
 import static com.sedmelluq.discord.lavaplayer.tools.Units.CONTENT_LENGTH_UNKNOWN;
 
 /**
@@ -51,8 +64,114 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
     this.sourceManager = sourceManager;
   }
 
+  @NotNull
+  protected JsonBrowser loadJsonResponse(@NotNull HttpInterface httpInterface,
+                                         @NotNull HttpGet request,
+                                         @NotNull String context) throws IOException {
+    log.debug("Requesting {} ({})", context, request.getURI());
+
+    try (CloseableHttpResponse response = httpInterface.execute(request)) {
+      HttpClientTools.assertSuccessWithContent(response, context);
+      // todo: flag for checking json content type?
+      //       from my testing, json is always returned so might not be necessary.
+      HttpClientTools.assertJsonContentType(response);
+
+      String json = EntityUtils.toString(response.getEntity());
+      log.trace("Response from {} ({}) {}", request.getURI(), context, json);
+
+      return JsonBrowser.parse(json);
+    }
+  }
+
   @Override
   public void process(LocalAudioTrackExecutor localExecutor) throws Exception {
+    if (!sourceManager.getInviClients().isEmpty()) {
+      for (InviClient inviClient : sourceManager.getInviClients()) {
+        HttpGet request = new HttpGet(String.format("%s/v1/videos/%s", inviClient.getApiRoute(), trackInfo.identifier));
+
+        try {
+          JsonBrowser json = loadJsonResponse(this.sourceManager.getInterface(), request, "Stream Response");
+
+          // Check for errors in the JSON response
+          if (json.get("error").text() == null) {
+            List<JsonBrowser> formats = json.get("adaptiveFormats").values();
+
+            // Find the best format based on encoding and channels
+            JsonBrowser bestFormat = formats.stream()
+                    .filter(format -> "opus".equals(format.get("encoding").text()))
+                    .filter(format -> format.get("audioChannels").asLong(0) <= 2)
+                    .max((format1, format2) -> {
+                      long bitrate1 = format1.get("bitrate").asLong(0);
+                      long bitrate2 = format2.get("bitrate").asLong(0);
+
+                      // Compare by bitrate first
+                      if (bitrate1 != bitrate2) {
+                        return Long.compare(bitrate1, bitrate2);
+                      }
+
+                      // If bitrate is the same, compare by sample rate
+                      long sampleRate1 = format1.get("audioSampleRate").asLong(0);
+                      long sampleRate2 = format2.get("audioSampleRate").asLong(0);
+                      return Long.compare(sampleRate1, sampleRate2);
+                    })
+                    .orElseThrow(() -> new FriendlyException("No suitable formats found.", FriendlyException.Severity.SUSPICIOUS, null));
+
+            URI formatUrl = new URI(bestFormat.get("url").text());
+
+            if (inviClient.getProxies().isEmpty()) {
+              YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
+              processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+              return; // Exit once successful
+            }
+
+            // Try each proxy in order
+            for (String proxy : inviClient.getProxies()) {
+              try {
+                // Update the URI with the current proxy
+                URI updatedUri = new URI(
+                        formatUrl.getScheme(),                // Preserve scheme (http/https)
+                        formatUrl.getUserInfo(),              // Preserve user info (if any)
+                        proxy.split(":")[0],                  // New host
+                        Integer.parseInt(proxy.split(":")[1]), // New port
+                        formatUrl.getPath(),                  // Preserve path
+                        formatUrl.getQuery(),                 // Preserve query
+                        formatUrl.getFragment()                // Preserve fragment (if any)
+                );
+
+                log.debug("Trying format URL: " + updatedUri);
+
+                // Attempt to create the stream
+                YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
+                processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
+                return; // Exit once successful
+              } catch (RuntimeException e) {
+                String message = e.getMessage();
+                if ("Not success status code: 403".equals(message)) {
+                  log.warn("Access denied: 403 on " + proxy + ". Trying next proxy...");
+                } else if ("Invalid status code for Stream Response: 503".equals(message)) {
+                  log.warn("Proxy down, trying next proxy...");
+                } else {
+                  log.error("An error occurred while processing the stream: " + message, e);
+                  throw e;
+                }
+              } catch (Exception e) {
+                log.error("An unexpected error occurred: " + e.getMessage(), e);
+                throw e; // Rethrow any other exceptions
+              }
+            }
+
+            // If all proxies fail, throw a final exception
+            throw new RuntimeException("All proxies failed to connect.");
+          } else {
+            throw new RuntimeException(json.get("error").text());
+          }
+
+        } catch (IOException e) {
+          throw new FriendlyException("Could not read stream response.", FriendlyException.Severity.SUSPICIOUS, e);
+        }
+      }
+    }
+
     Client[] clients = sourceManager.getClients();
 
     if (Arrays.stream(clients).noneMatch(Client::supportsFormatLoading)) {

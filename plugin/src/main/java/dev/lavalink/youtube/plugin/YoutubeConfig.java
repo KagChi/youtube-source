@@ -1,10 +1,12 @@
 package dev.lavalink.youtube.plugin;
 
 import dev.lavalink.youtube.clients.ClientOptions;
+import dev.lavalink.youtube.invi.InviClient;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @ConfigurationProperties(prefix = "plugins.youtube")
@@ -18,7 +20,9 @@ public class YoutubeConfig {
     private String[] clients;
     private Map<String, ClientOptions> clientOptions = new HashMap<>();
     private YoutubeOauthConfig oauth = null;
+    private List<InviClient> inviClients;
 
+    // Getters and Setters
     public boolean getEnabled() {
         return enabled;
     }
@@ -51,6 +55,10 @@ public class YoutubeConfig {
         return this.oauth;
     }
 
+    public List<InviClient> getInviClients() {
+        return inviClients;
+    }
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
@@ -81,5 +89,9 @@ public class YoutubeConfig {
 
     public void setOauth(YoutubeOauthConfig oauth) {
         this.oauth = oauth;
+    }
+
+    public void setInviClients(List<InviClient> inviClients) {
+        this.inviClients = inviClients;
     }
 }

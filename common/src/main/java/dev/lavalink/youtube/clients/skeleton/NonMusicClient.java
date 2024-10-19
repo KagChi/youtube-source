@@ -12,8 +12,10 @@ import dev.lavalink.youtube.cipher.SignatureCipher;
 import dev.lavalink.youtube.cipher.SignatureCipherManager;
 import dev.lavalink.youtube.cipher.SignatureCipherManager.CachedPlayerScript;
 import dev.lavalink.youtube.clients.ClientConfig;
+import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.TemporalInfo;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.util.EntityUtils;
@@ -336,6 +338,30 @@ public abstract class NonMusicClient implements Client {
                                @NotNull String videoId) throws CannotBeLoaded, IOException {
         if (!getOptions().getVideoLoading()) {
             throw new OptionDisabledException("Video loading is disabled for this client");
+        }
+
+        if (!source.getInviClients().isEmpty()) {
+            for (InviClient inviClient : source.getInviClients()) {
+                HttpGet request = new HttpGet(String.format("%s/v1/videos/%s", inviClient.getApiRoute(), videoId));
+
+                try {
+                    try (CloseableHttpResponse response = httpInterface.execute(request)) {
+                        HttpClientTools.assertSuccessWithContent(response, "response");
+                        // todo: flag for checking json content type?
+                        //       from my testing, json is always returned so might not be necessary.
+                        HttpClientTools.assertJsonContentType(response);
+
+                        String json = EntityUtils.toString(response.getEntity());
+                        log.trace("Response from {} {}", request.getURI(), "response", json);
+
+                        JsonBrowser parsedJson = JsonBrowser.parse(json);
+                        return buildAudioTrack(source, parsedJson, parsedJson.get("title").text(), parsedJson.get("author").text(), parsedJson.get("lengthSeconds").asLong(0) * 1000L, videoId, parsedJson.get("type").text().equals("livestream"));
+                    }
+
+                } catch (IOException e) {
+                    throw new FriendlyException("Could not read video info response.", SUSPICIOUS, e);
+                }
+            }
         }
 
         JsonBrowser json = loadTrackInfoFromInnertube(source, httpInterface, videoId, null);

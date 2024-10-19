@@ -19,6 +19,7 @@ import dev.lavalink.youtube.clients.skeleton.Client;
 import dev.lavalink.youtube.http.YoutubeAccessTokenTracker;
 import dev.lavalink.youtube.http.YoutubeHttpContextFilter;
 import dev.lavalink.youtube.http.YoutubeOauth2Handler;
+import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.YoutubeAudioTrack;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -31,6 +32,8 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,6 +68,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     protected final boolean allowDirectPlaylistIds;
     protected final Client[] clients;
 
+    protected final List<InviClient> inviClients;
+
     protected YoutubeHttpContextFilter contextFilter;
     protected YoutubeOauth2Handler oauth2Handler;
     protected SignatureCipherManager cipherManager;
@@ -79,7 +84,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
 
     public YoutubeAudioSourceManager(boolean allowSearch, boolean allowDirectVideoIds, boolean allowDirectPlaylistIds) {
         // query order: music -> web -> androidtestsuite -> tvhtml5embedded
-        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, new Music(), new Web(), new AndroidTestsuite(), new TvHtml5Embedded());
+        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, Collections.emptyList(), new Music(), new Web(), new AndroidTestsuite(), new TvHtml5Embedded());
     }
 
     /**
@@ -88,8 +93,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
      * @param clients The clients to use for track loading. They will be queried in
      *                the order they are provided.
      */
-    public YoutubeAudioSourceManager(@NotNull Client... clients) {
-        this(true, true, true, clients);
+    public YoutubeAudioSourceManager(List<InviClient> inviClients, @NotNull Client... clients) {
+        this(true, true, true, inviClients, clients);
     }
 
     /**
@@ -100,8 +105,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
      * @param clients The clients to use for track loading. They will be queried in
      *                the order they are provided.
      */
-    public YoutubeAudioSourceManager(boolean allowSearch, @NotNull Client... clients) {
-        this(allowSearch, true, true, clients);
+    public YoutubeAudioSourceManager(boolean allowSearch, List<InviClient> inviClients, @NotNull Client... clients) {
+        this(allowSearch, true, true, inviClients, clients);
     }
 
     /**
@@ -119,23 +124,26 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     public YoutubeAudioSourceManager(boolean allowSearch,
                                      boolean allowDirectVideoIds,
                                      boolean allowDirectPlaylistIds,
-                                     @NotNull Client... clients) {
+                                     List<InviClient> inviClients, @NotNull Client... clients) {
         this(
             new YoutubeSourceOptions()
                 .setAllowSearch(allowSearch)
                 .setAllowDirectVideoIds(allowDirectVideoIds)
                 .setAllowDirectPlaylistIds(allowDirectPlaylistIds),
+            inviClients,
             clients
         );
     }
 
     public YoutubeAudioSourceManager(YoutubeSourceOptions options,
+                                     List<InviClient> inviClients,
                                      @NotNull Client... clients) {
         this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
         this.allowSearch = options.isAllowSearch();
         this.allowDirectVideoIds = options.isAllowDirectVideoIds();
         this.allowDirectPlaylistIds = options.isAllowDirectPlaylistIds();
         this.clients = clients;
+        this.inviClients = inviClients;
         this.cipherManager = new SignatureCipherManager();
         this.oauth2Handler = new YoutubeOauth2Handler(httpInterfaceManager);
 
@@ -189,6 +197,10 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
                 throw exception;
             }
         }
+    }
+
+    public List<InviClient> getInviClients() {
+        return inviClients;
     }
 
     @Nullable
