@@ -1,6 +1,5 @@
 package dev.lavalink.youtube.track;
 
-import com.sedmelluq.discord.lavaplayer.container.adts.AdtsAudioTrack;
 import com.sedmelluq.discord.lavaplayer.container.matroska.MatroskaAudioTrack;
 import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
@@ -10,7 +9,6 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity;
 import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
-import com.sedmelluq.discord.lavaplayer.tools.io.PersistentHttpStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.DelegatedAudioTrack;
@@ -26,8 +24,6 @@ import dev.lavalink.youtube.track.format.StreamFormat;
 import dev.lavalink.youtube.track.format.TrackFormats;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
 import org.apache.http.util.EntityUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -37,14 +33,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 import static com.sedmelluq.discord.lavaplayer.container.Formats.MIME_AUDIO_WEBM;
 import static com.sedmelluq.discord.lavaplayer.tools.DataFormatTools.decodeUrlEncodedItems;
-import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.SUSPICIOUS;
 import static com.sedmelluq.discord.lavaplayer.tools.Units.CONTENT_LENGTH_UNKNOWN;
 
 /**
@@ -129,7 +123,7 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
                 processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
               } else if ("aac".equals(encoding)) {
                 YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
-                processDelegate(new AdtsAudioTrack(trackInfo, stream), localExecutor);
+                processDelegate(new MpegAudioTrack(trackInfo, stream), localExecutor);
               } else {
                   throw new FriendlyException("No suitable formats found.", Severity.SUSPICIOUS, null);
               }
@@ -158,7 +152,7 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
                   processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
                 } else if ("aac".equals(encoding)) {
                   YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
-                  processDelegate(new AdtsAudioTrack(trackInfo, stream), localExecutor);
+                  processDelegate(new MpegAudioTrack(trackInfo, stream), localExecutor);
                 } else {
                   throw new FriendlyException("No suitable formats found.", Severity.SUSPICIOUS, null);
                 }
