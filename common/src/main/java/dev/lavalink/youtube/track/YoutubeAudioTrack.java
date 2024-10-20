@@ -19,6 +19,7 @@ import dev.lavalink.youtube.UrlTools;
 import dev.lavalink.youtube.UrlTools.UrlInfo;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.clients.skeleton.Client;
+import dev.lavalink.youtube.http.RandomUserAgent;
 import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.format.StreamFormat;
 import dev.lavalink.youtube.track.format.TrackFormats;
@@ -84,6 +85,17 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
       for (InviClient inviClient : sourceManager.getInviClients()) {
         HttpGet request = new HttpGet(String.format("%s/v1/videos/%s", inviClient.getApiRoute(), trackInfo.identifier));
 
+        request.setHeader("Connection", "keep-alive");
+        request.setHeader("DNT", "1");
+        request.setHeader("Upgrade-Insecure-Requests", "1");
+        request.setHeader("Accept", "application/json");
+        request.setHeader("User-Agent", RandomUserAgent.getRandomUserAgent());
+        request.setHeader("Accept-Encoding", "none");
+        request.setHeader("TE", "trailers");
+        request.setHeader("Accept-Language", "en-US,en;q=0.9");
+        request.setHeader("Sec-Fetch-Mode", "cors");
+        request.setHeader("Sec-Fetch-Site", "same-site");
+
         try {
           JsonBrowser json = loadJsonResponse(this.sourceManager.getInterface(), request, "Stream Response");
 
@@ -117,7 +129,7 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
             URI formatUrl = new URI(bestFormat.get("url").text());
             String encoding = bestFormat.get("encoding").text();
 
-            if (inviClient.getProxies().isEmpty()) {
+            if (inviClient.getProxies() == null || inviClient.getProxies().isEmpty()) {
               if ("opus".equals(encoding)) {
                 YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
                 processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);

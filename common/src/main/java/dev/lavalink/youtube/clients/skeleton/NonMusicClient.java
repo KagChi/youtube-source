@@ -12,6 +12,7 @@ import dev.lavalink.youtube.cipher.SignatureCipher;
 import dev.lavalink.youtube.cipher.SignatureCipherManager;
 import dev.lavalink.youtube.cipher.SignatureCipherManager.CachedPlayerScript;
 import dev.lavalink.youtube.clients.ClientConfig;
+import dev.lavalink.youtube.http.RandomUserAgent;
 import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.TemporalInfo;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -344,6 +345,17 @@ public abstract class NonMusicClient implements Client {
             for (InviClient inviClient : source.getInviClients()) {
                 HttpGet request = new HttpGet(String.format("%s/v1/videos/%s", inviClient.getApiRoute(), videoId));
 
+                request.setHeader("Connection", "keep-alive");
+                request.setHeader("DNT", "1");
+                request.setHeader("Upgrade-Insecure-Requests", "1");
+                request.setHeader("Accept", "application/json");
+                request.setHeader("User-Agent", RandomUserAgent.getRandomUserAgent());
+                request.setHeader("Accept-Encoding", "none");
+                request.setHeader("TE", "trailers");
+                request.setHeader("Accept-Language", "en-US,en;q=0.9");
+                request.setHeader("Sec-Fetch-Mode", "cors");
+                request.setHeader("Sec-Fetch-Site", "same-site");
+
                 try {
                     try (CloseableHttpResponse response = httpInterface.execute(request)) {
                         HttpClientTools.assertSuccessWithContent(response, "response");
@@ -352,7 +364,7 @@ public abstract class NonMusicClient implements Client {
                         HttpClientTools.assertJsonContentType(response);
 
                         String json = EntityUtils.toString(response.getEntity());
-                        log.trace("Response from {} {}", request.getURI(), "response", json);
+                        log.trace("Response from {} {} {}", request.getURI(), "response", json);
 
                         JsonBrowser parsedJson = JsonBrowser.parse(json);
                         return buildAudioTrack(source, parsedJson, parsedJson.get("title").text(), parsedJson.get("author").text(), parsedJson.get("lengthSeconds").asLong(0) * 1000L, videoId, parsedJson.get("type").text().equals("livestream"));

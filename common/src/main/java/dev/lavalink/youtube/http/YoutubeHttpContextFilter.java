@@ -51,6 +51,8 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
   public void onRequest(HttpClientContext context,
                         HttpUriRequest request,
                         boolean isRepetition) {
+    log.debug(String.format("Requesting to %s", request.getURI()));
+
     if (!isRepetition) {
       context.removeAttribute(ATTRIBUTE_RESET_RETRY);
     }
@@ -68,7 +70,18 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
 
     String userAgent = context.getAttribute(ATTRIBUTE_USER_AGENT_SPECIFIED, String.class);
 
-    if (!request.getURI().getHost().contains("googlevideo")) {
+    if (request.getURI().getPath().contains("videos")) {
+      request.setHeader("Connection", "keep-alive");
+      request.setHeader("DNT", "1");
+      request.setHeader("Upgrade-Insecure-Requests", "1");
+      request.setHeader("Accept", "application/json");
+      request.setHeader("User-Agent", RandomUserAgent.getRandomUserAgent());
+      request.setHeader("Accept-Encoding", "none");
+      request.setHeader("TE", "trailers");
+      request.setHeader("Accept-Language", "en-US,en;q=0.9");
+      request.setHeader("Sec-Fetch-Mode", "cors");
+      request.setHeader("Sec-Fetch-Site", "same-site");
+    } else if (!request.getURI().getHost().contains("googlevideo")) {
       if (userAgent != null) {
         request.setHeader("User-Agent", userAgent);
 
