@@ -181,14 +181,17 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
             }
 
             List<InviClient> inviClients;
+            String proxy;
 
             if (youtubeConfig == null || youtubeConfig.getInviClients() == null) {
                 inviClients = Collections.emptyList();
+                proxy = null;
             } else {
                 inviClients = youtubeConfig.getInviClients();
+                proxy = youtubeConfig.getProxy();
             }
 
-            source = new YoutubeAudioSourceManager(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, inviClients, clientProvider.getClients(clients, this::getOptionsForClient));
+            source = new YoutubeAudioSourceManager(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, inviClients, proxy, clientProvider.getClients(clients, this::getOptionsForClient));
         }
 
         log.info("YouTube source initialised with clients: {} ", Arrays.stream(source.getClients()).map(Client::getIdentifier).collect(Collectors.joining(", ")));

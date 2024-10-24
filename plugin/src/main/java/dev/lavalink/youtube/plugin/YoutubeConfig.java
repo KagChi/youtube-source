@@ -22,6 +22,8 @@ public class YoutubeConfig {
     private YoutubeOauthConfig oauth = null;
     private List<InviClient> inviClients;
 
+    private String proxy;
+
     // Getters and Setters
     public boolean getEnabled() {
         return enabled;
@@ -59,6 +61,10 @@ public class YoutubeConfig {
         return inviClients;
     }
 
+    public String getProxy() {
+        return proxy;
+    }
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
@@ -93,5 +99,9 @@ public class YoutubeConfig {
 
     public void setInviClients(List<InviClient> inviClients) {
         this.inviClients = inviClients;
+    }
+
+    public void setProxy(String proxy) {
+        this.proxy = proxy;
     }
 }

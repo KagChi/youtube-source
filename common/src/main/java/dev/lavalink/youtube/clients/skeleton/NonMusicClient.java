@@ -357,7 +357,7 @@ public abstract class NonMusicClient implements Client {
                 request.setHeader("Sec-Fetch-Site", "same-site");
 
                 try {
-                    try (CloseableHttpResponse response = httpInterface.execute(request)) {
+                    try (CloseableHttpResponse response = source.getAlternateProxiedHttpInterface().execute(request)) {
                         HttpClientTools.assertSuccessWithContent(response, "response");
                         // todo: flag for checking json content type?
                         //       from my testing, json is always returned so might not be necessary.

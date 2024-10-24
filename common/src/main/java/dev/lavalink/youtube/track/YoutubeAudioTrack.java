@@ -97,7 +97,7 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
         request.setHeader("Sec-Fetch-Site", "same-site");
 
         try {
-          JsonBrowser json = loadJsonResponse(this.sourceManager.getInterface(), request, "Stream Response");
+          JsonBrowser json = loadJsonResponse(this.sourceManager.getAlternateProxiedHttpInterface(), request, "Stream Response");
 
           // Check for errors in the JSON response
           if (json.get("error").text() == null) {

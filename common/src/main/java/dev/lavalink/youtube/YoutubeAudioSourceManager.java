@@ -21,8 +21,13 @@ import dev.lavalink.youtube.http.YoutubeHttpContextFilter;
 import dev.lavalink.youtube.http.YoutubeOauth2Handler;
 import dev.lavalink.youtube.invi.InviClient;
 import dev.lavalink.youtube.track.YoutubeAudioTrack;
+import org.apache.http.HttpHost;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -62,6 +67,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     private static final Pattern shortHandPattern = Pattern.compile("^" + PROTOCOL_REGEX + "(?:" + DOMAIN_REGEX + "/(?:live|embed|shorts)|" + SHORT_DOMAIN_REGEX + ")/(?<videoId>.*)");
 
     protected final HttpInterfaceManager httpInterfaceManager;
+    protected final HttpInterfaceManager alternateProxiedHttpInterfaceManager;
 
     protected final boolean allowSearch;
     protected final boolean allowDirectVideoIds;
@@ -84,7 +90,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
 
     public YoutubeAudioSourceManager(boolean allowSearch, boolean allowDirectVideoIds, boolean allowDirectPlaylistIds) {
         // query order: music -> web -> androidtestsuite -> tvhtml5embedded
-        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, Collections.emptyList(), new Music(), new Web(), new AndroidTestsuite(), new TvHtml5Embedded());
+        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, Collections.emptyList(), null, new Music(), new Web(), new AndroidTestsuite(), new TvHtml5Embedded());
     }
 
     /**
@@ -93,8 +99,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
      * @param clients The clients to use for track loading. They will be queried in
      *                the order they are provided.
      */
-    public YoutubeAudioSourceManager(List<InviClient> inviClients, @NotNull Client... clients) {
-        this(true, true, true, inviClients, clients);
+    public YoutubeAudioSourceManager(List<InviClient> inviClients,String proxy, @NotNull Client... clients) {
+        this(true, true, true, inviClients,proxy, clients);
     }
 
     /**
@@ -105,8 +111,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
      * @param clients The clients to use for track loading. They will be queried in
      *                the order they are provided.
      */
-    public YoutubeAudioSourceManager(boolean allowSearch, List<InviClient> inviClients, @NotNull Client... clients) {
-        this(allowSearch, true, true, inviClients, clients);
+    public YoutubeAudioSourceManager(boolean allowSearch, List<InviClient> inviClients, String proxy, @NotNull Client... clients) {
+        this(allowSearch, true, true, inviClients, proxy, clients);
     }
 
     /**
@@ -124,19 +130,21 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     public YoutubeAudioSourceManager(boolean allowSearch,
                                      boolean allowDirectVideoIds,
                                      boolean allowDirectPlaylistIds,
-                                     List<InviClient> inviClients, @NotNull Client... clients) {
+                                     List<InviClient> inviClients, String proxy, @NotNull Client... clients) {
         this(
             new YoutubeSourceOptions()
                 .setAllowSearch(allowSearch)
                 .setAllowDirectVideoIds(allowDirectVideoIds)
                 .setAllowDirectPlaylistIds(allowDirectPlaylistIds),
             inviClients,
+            proxy,
             clients
         );
     }
 
     public YoutubeAudioSourceManager(YoutubeSourceOptions options,
                                      List<InviClient> inviClients,
+                                     String proxy,
                                      @NotNull Client... clients) {
         this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
         this.allowSearch = options.isAllowSearch();
@@ -146,6 +154,45 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
         this.inviClients = inviClients;
         this.cipherManager = new SignatureCipherManager();
         this.oauth2Handler = new YoutubeOauth2Handler(httpInterfaceManager);
+
+        this.alternateProxiedHttpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
+
+        if (proxy != null && !proxy.isEmpty()) {
+            this.alternateProxiedHttpInterfaceManager.configureBuilder(builder -> {
+                log.info("Setting HTTP PROXY");
+
+                // Assuming proxy format is "host:port" or "host:port:username:password"
+                String[] proxyParts = proxy.split(":");
+
+                if (proxyParts.length >= 2) {
+                    String proxyHost = proxyParts[0];     // e.g., "152.230.215.123"
+                    int proxyPort = Integer.parseInt(proxyParts[1]); // e.g., 80
+
+                    // Optional username and password
+                    String proxyUsername = proxyParts.length > 2 ? proxyParts[2] : null;
+                    String proxyPassword = proxyParts.length > 3 ? proxyParts[3] : null;
+
+                    // Set up the proxy (with or without credentials)
+                    HttpHost proxyHttpHost = new HttpHost(proxyHost, proxyPort);
+                    builder.setProxy(proxyHttpHost);
+
+                    // If username and password are provided, configure credentials provider
+                    if (proxyUsername != null && proxyPassword != null) {
+                        CredentialsProvider credsProvider = new BasicCredentialsProvider();
+                        credsProvider.setCredentials(
+                                new AuthScope(proxyHost, proxyPort),
+                                new UsernamePasswordCredentials(proxyUsername, proxyPassword)
+                        );
+                        builder.setDefaultCredentialsProvider(credsProvider);
+                        log.info("Proxy authentication set with username and password.");
+                    } else {
+                        log.info("Proxy set without authentication.");
+                    }
+                } else {
+                    log.error("Invalid proxy string format. Expected format: host:port or host:port:username:password");
+                }
+            });
+        }
 
         contextFilter = new YoutubeHttpContextFilter();
         contextFilter.setTokenTracker(new YoutubeAccessTokenTracker(httpInterfaceManager));
@@ -405,6 +452,10 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
         return httpInterfaceManager.getInterface();
     }
 
+    public HttpInterface getAlternateProxiedHttpInterface() {
+        return alternateProxiedHttpInterfaceManager.getInterface();
+    }
+
     @Override
     public boolean isTrackEncodable(AudioTrack track) {
         return true;
@@ -424,6 +475,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     @Override
     public void shutdown() {
         ExceptionTools.closeWithWarnings(httpInterfaceManager);
+        ExceptionTools.closeWithWarnings(alternateProxiedHttpInterfaceManager);
     }
 
     @FunctionalInterface
