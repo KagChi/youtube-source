@@ -198,6 +198,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
         contextFilter.setTokenTracker(new YoutubeAccessTokenTracker(httpInterfaceManager));
         contextFilter.setOauth2Handler(oauth2Handler);
 
+        alternateProxiedHttpInterfaceManager.setHttpContextFilter(contextFilter);
         httpInterfaceManager.setHttpContextFilter(contextFilter);
     }
 

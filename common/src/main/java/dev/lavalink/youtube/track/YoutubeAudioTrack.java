@@ -97,19 +97,17 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
         request.setHeader("Sec-Fetch-Site", "same-site");
 
         try {
-          JsonBrowser json = loadJsonResponse(this.sourceManager.getAlternateProxiedHttpInterface(), request, "Stream Response");
+          JsonBrowser json = loadJsonResponse(sourceManager.getAlternateProxiedHttpInterface(), request, "Stream Response");
 
           // Check for errors in the JSON response
           if (json.get("error").text() == null) {
             List<JsonBrowser> formats = json.get("adaptiveFormats").values();
 
             // Find the best format based on encoding and channels
+            // Attempt to find the best audio/mp4 format
             JsonBrowser bestFormat = formats.stream()
-                    .filter(format -> {
-                      String container = format.get("container").text();
-                      return "webm".equals(container) || "m4a".equals(container);
-                    })
-                    .filter(format -> format.get("audioChannels").asLong(0) <= 2)
+                    .filter(format -> format.get("audioChannels").asLong(0) == 2)
+                    .filter(format -> format.get("type").text().contains("audio/mp4"))
                     .max((format1, format2) -> {
                       long bitrate1 = format1.get("bitrate").asLong(0);
                       long bitrate2 = format2.get("bitrate").asLong(0);
@@ -124,16 +122,35 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
                       long sampleRate2 = format2.get("audioSampleRate").asLong(0);
                       return Long.compare(sampleRate1, sampleRate2);
                     })
-                    .orElseThrow(() -> new FriendlyException("No suitable formats found.", FriendlyException.Severity.SUSPICIOUS, null));
+                    // If no audio/mp4 format is found, fallback to best audio/webm format
+                    .orElseGet(() -> formats.stream()
+                            .filter(format -> format.get("audioChannels").asLong(0) == 2)
+                            .filter(format -> format.get("type").text().contains("audio/webm"))
+                            .max((format1, format2) -> {
+                              long bitrate1 = format1.get("bitrate").asLong(0);
+                              long bitrate2 = format2.get("bitrate").asLong(0);
+
+                              // Compare by bitrate first
+                              if (bitrate1 != bitrate2) {
+                                return Long.compare(bitrate1, bitrate2);
+                              }
+
+                              // If bitrate is the same, compare by sample rate
+                              long sampleRate1 = format1.get("audioSampleRate").asLong(0);
+                              long sampleRate2 = format2.get("audioSampleRate").asLong(0);
+                              return Long.compare(sampleRate1, sampleRate2);
+                            })
+                            .orElseThrow(() -> new FriendlyException("No suitable formats found.", FriendlyException.Severity.SUSPICIOUS, null))
+                    );
 
             URI formatUrl = new URI(bestFormat.get("url").text());
-            String encoding = bestFormat.get("encoding").text();
+            String container = bestFormat.get("container").text();
 
             if (inviClient.getProxies() == null || inviClient.getProxies().isEmpty()) {
-              if ("opus".equals(encoding)) {
+              if ("webm".equals(container)) {
                 YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
                 processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
-              } else if ("aac".equals(encoding)) {
+              } else if ("m4a".equals(container)) {
                 YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), formatUrl, CONTENT_LENGTH_UNKNOWN);
                 processDelegate(new MpegAudioTrack(trackInfo, stream), localExecutor);
               } else {
@@ -159,10 +176,10 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
 
                 log.debug("Trying format URL: " + updatedUri);
 
-                if ("opus".equals(encoding)) {
+                if ("webm".equals(container)) {
                   YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
                   processDelegate(new MatroskaAudioTrack(trackInfo, stream), localExecutor);
-                } else if ("aac".equals(encoding)) {
+                } else if ("m4a".equals(container)) {
                   YoutubePersistentHttpStream stream = new YoutubePersistentHttpStream(sourceManager.getInterface(), updatedUri, CONTENT_LENGTH_UNKNOWN);
                   processDelegate(new MpegAudioTrack(trackInfo, stream), localExecutor);
                 } else {
@@ -205,7 +222,7 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
           new RuntimeException("None of the registered clients supports loading of formats"));
     }
 
-    try (HttpInterface httpInterface = sourceManager.getInterface()) {
+    try (HttpInterface httpInterface = sourceManager.getAlternateProxiedHttpInterface()) {
       Exception lastException = null;
 
       for (Client client : clients) {
