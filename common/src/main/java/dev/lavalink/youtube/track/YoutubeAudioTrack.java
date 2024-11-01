@@ -106,8 +106,8 @@ public class YoutubeAudioTrack extends DelegatedAudioTrack {
             // Find the best format based on encoding and channels
             JsonBrowser bestFormat = formats.stream()
                     .filter(format -> {
-                      String encoding = format.get("encoding").text();
-                      return "opus".equals(encoding) || "aac".equals(encoding);
+                      String container = format.get("container").text();
+                      return "webm".equals(container) || "m4a".equals(container);
                     })
                     .filter(format -> format.get("audioChannels").asLong(0) <= 2)
                     .max((format1, format2) -> {
